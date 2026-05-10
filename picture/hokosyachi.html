@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ほこシャチチャンネル | HOKO SHACHI Official Site</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;500;700;900&family=Orbitron:wght@600;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --deep: #03132e;
+    --deep2: #061d4a;
+    --aqua: #1ecbe1;
+    --aqua-soft: #6fe7f3;
+    --gold: #ffd56b;
+    --gold-deep: #f0a429;
+    --white: #f3f7ff;
+    --shadow: 0 20px 60px rgba(2, 12, 36, .55);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Noto Sans JP', sans-serif;
+    background: var(--deep);
+    color: var(--white);
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  /* === Custom Cursor === */
+  .cursor-dot, .cursor-ring {
+    position: fixed;
+    top: 0; left: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: width .25s, height .25s, background .25s;
+    mix-blend-mode: difference;
+  }
+  .cursor-dot {
+    width: 8px; height: 8px;
+    background: var(--gold);
+  }
+  .cursor-ring {
+    width: 38px; height: 38px;
+    border: 2px solid var(--aqua-soft);
+    transition: transform .15s ease-out, width .25s, height .25s, border-color .25s;
+  }
+  .cursor-ring.hover {
+    width: 70px; height: 70px;
+    border-color: var(--gold);
+  }
+
+  /* === Navigation === */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 22px 5vw;
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 100;
+    transition: background .4s, backdrop-filter .4s;
+  }
+  nav.scrolled {
+    background: rgba(3, 19, 46, .75);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  nav .logo {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: 3px;
+    color: var(--gold);
+    text-shadow: 0 0 12px rgba(255, 213, 107, .35);
+  }
+  nav ul { display: flex; gap: 36px; list-style: none; }
+  nav a {
+    color: var(--white);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 14px;
+    letter-spacing: 2px;
+    position: relative;
+    padding: 4px 0;
+  }
+  nav a::after {
+    content: '';
+    position: absolute; left: 0; bottom: 0;
+    width: 0; height: 2px;
+    background: linear-gradient(90deg, var(--aqua), var(--gold));
+    transition: width .35s ease;
+  }
+  nav a:hover::after { width: 100%; }
+
+  /* === Hero === */
+  .hero {
+    height: 100vh; min-height: 700px;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse at 30% 0%, rgba(30, 203, 225, .18), transparent 60%),
+      radial-gradient(ellipse at 70% 100%, rgba(255, 213, 107, .15), transparent 60%),
+      linear-gradient(180deg, #03132e 0%, #061d4a 100%);
+  }
+
+  .hero canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+
+  .hero-content {
+    position: relative; z-index: 5;
+    text-align: center;
+    padding: 0 20px;
+  }
+  .hero .tag {
+    display: inline-block;
+    padding: 8px 20px;
+    border: 1px solid var(--aqua);
+    border-radius: 100px;
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: var(--aqua-soft);
+    margin-bottom: 30px;
+    backdrop-filter: blur(8px);
+    animation: fadeUp 1s .2s both;
+  }
+  .hero h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(48px, 10vw, 140px);
+    font-weight: 900;
+    line-height: .95;
+    letter-spacing: 4px;
+    background: linear-gradient(180deg, #fff 30%, var(--gold) 70%, var(--gold-deep) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+    animation: fadeUp 1s .4s both;
+    text-shadow: 0 0 40px rgba(30, 203, 225, .15);
+  }
+  .hero .jp {
+    font-size: clamp(20px, 3vw, 32px);
+    font-weight: 300;
+    letter-spacing: 18px;
+    color: var(--white);
+    margin-bottom: 40px;
+    padding-left: 18px;
+    animation: fadeUp 1s .6s both;
+  }
+  .hero p.lead {
+    font-size: clamp(14px, 1.4vw, 17px);
+    max-width: 620px;
+    margin: 0 auto 50px;
+    line-height: 2;
+    color: rgba(243, 247, 255, .85);
+    animation: fadeUp 1s .8s both;
+  }
+  .cta-row { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; animation: fadeUp 1s 1s both; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 12px;
+    padding: 16px 36px;
+    border-radius: 100px;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-decoration: none;
+    cursor: none;
+    border: none;
+    position: relative;
+    overflow: hidden;
+    transition: transform .3s, box-shadow .3s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--gold), var(--gold-deep));
+    color: var(--deep);
+    box-shadow: 0 10px 30px rgba(240, 164, 41, .4);
+  }
+  .btn-primary:hover {
+    transform: translateY(-4px) scale(1.04);
+    box-shadow: 0 20px 50px rgba(240, 164, 41, .6);
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--white);
+    border: 2px solid rgba(255, 255, 255, .25);
+  }
+  .btn-ghost:hover {
+    border-color: var(--aqua);
+    color: var(--aqua);
+    transform: translateY(-4px);
+  }
+  .btn::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: -100%;
+    width: 100%; height: 200%;
+    background: rgba(255, 255, 255, .15);
+    transform: translateY(-50%) rotate(25deg);
+    transition: left .5s;
+  }
+  .btn:hover::before { left: 100%; }
+
+  .scroll-indicator {
+    position: absolute; bottom: 32px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px; letter-spacing: 4px;
+    color: rgba(255,255,255,.6);
+    animation: bounce 2.5s infinite;
+  }
+  .scroll-indicator::after {
+    content: ''; display: block;
+    width: 1px; height: 36px;
+    background: linear-gradient(180deg, var(--aqua), transparent);
+    margin: 12px auto 0;
+  }
+
+  /* === Section base === */
+  section.block {
+    padding: 140px 8vw;
+    position: relative;
+  }
+  .section-title {
+    text-align: center;
+    margin-bottom: 80px;
+  }
+  .section-title .num {
+    font-family: 'Orbitron', sans-serif;
+    color: var(--aqua);
+    font-size: 14px;
+    letter-spacing: 6px;
+    margin-bottom: 16px;
+    display: block;
+  }
+  .section-title h2 {
+    font-size: clamp(32px, 5vw, 56px);
+    font-weight: 900;
+    letter-spacing: 6px;
+    background: linear-gradient(90deg, var(--white), var(--aqua-soft));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* === About === */
+  #about {
+    background: linear-gradient(180deg, #061d4a 0%, #03132e 100%);
+  }
+  .about-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    align-items: center;
+    max-width: 1200px; margin: 0 auto;
+  }
+  .about-visual {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 30px;
+    background:
+      radial-gradient(circle at 30% 30%, rgba(30, 203, 225, .35), transparent 60%),
+      radial-gradient(circle at 70% 70%, rgba(255, 213, 107, .25), transparent 60%),
+      linear-gradient(135deg, #0a2a5e, #03132e);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    transition: transform .6s cubic-bezier(.2,.7,.3,1);
+  }
+  .about-visual:hover { transform: rotate(-2deg) scale(1.02); }
+  .about-visual svg {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+  .about-text h3 {
+    font-size: clamp(22px, 2.4vw, 32px);
+    font-weight: 700;
+    margin-bottom: 28px;
+    line-height: 1.6;
+  }
+  .about-text h3 .accent {
+    color: var(--gold);
+    position: relative;
+  }
+  .about-text p {
+    font-size: 15px;
+    line-height: 2.2;
+    color: rgba(243, 247, 255, .8);
+    margin-bottom: 18px;
+  }
+
+  /* === Contents (cards) === */
+  #contents {
+    background: var(--deep);
+    overflow: hidden;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 28px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .card {
+    position: relative;
+    padding: 40px 32px;
+    border-radius: 24px;
+    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+    border: 1px solid rgba(255, 255, 255, .08);
+    overflow: hidden;
+    transition: transform .5s cubic-bezier(.2,.7,.3,1), border-color .4s;
+    cursor: none;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    background: linear-gradient(135deg, var(--aqua), var(--gold));
+    border-radius: 24px;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity .5s;
+  }
+  .card:hover {
+    transform: translateY(-12px);
+    border-color: transparent;
+  }
+  .card:hover::before { opacity: 1; }
+  .card-inner {
+    background: linear-gradient(180deg, #0a1f47 0%, #051636 100%);
+    border-radius: 22px;
+    padding: 34px 28px;
+    margin: -41px -33px;
+    position: relative;
+    z-index: 1;
+    height: calc(100% + 2px);
+  }
+  .card .num {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 50px;
+    font-weight: 900;
+    color: transparent;
+    -webkit-text-stroke: 1px var(--aqua);
+    letter-spacing: 2px;
+    line-height: 1;
+    margin-bottom: 24px;
+    transition: color .4s, -webkit-text-stroke-color .4s;
+  }
+  .card:hover .num {
+    color: var(--gold);
+    -webkit-text-stroke-color: var(--gold);
+  }
+  .card h4 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 18px;
+    letter-spacing: 2px;
+  }
+  .card p {
+    font-size: 13px;
+    line-height: 2;
+    color: rgba(243, 247, 255, .7);
+  }
+  .card .icon {
+    position: absolute;
+    top: 28px; right: 28px;
+    width: 44px; height: 44px;
+    opacity: .35;
+    transition: opacity .4s, transform .5s;
+  }
+  .card:hover .icon { opacity: 1; transform: rotate(15deg) scale(1.15); }
+
+  /* === Stats / Episodes (clickable) === */
+  #episodes {
+    background: linear-gradient(180deg, #03132e 0%, #061d4a 100%);
+  }
+  .episode-list {
+    max-width: 1000px; margin: 0 auto;
+    display: flex; flex-direction: column;
+    gap: 16px;
+  }
+  .episode {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    align-items: center;
+    gap: 28px;
+    padding: 28px 32px;
+    background: rgba(255, 255, 255, .03);
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 18px;
+    cursor: none;
+    transition: all .4s;
+    position: relative;
+    overflow: hidden;
+  }
+  .episode::after {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: linear-gradient(180deg, var(--aqua), var(--gold));
+    transform: scaleY(0);
+    transform-origin: top;
+    transition: transform .4s;
+  }
+  .episode:hover {
+    background: rgba(30, 203, 225, .07);
+    border-color: var(--aqua);
+    transform: translateX(8px);
+  }
+  .episode:hover::after { transform: scaleY(1); }
+  .episode .ep-num {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--aqua);
+  }
+  .episode .ep-info h5 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .episode .ep-info span {
+    font-size: 12px;
+    color: rgba(255,255,255,.5);
+    letter-spacing: 2px;
+  }
+  .episode .ep-desc {
+    max-height: 0;
+    overflow: hidden;
+    grid-column: 1 / -1;
+    transition: max-height .5s ease;
+    color: rgba(243,247,255,.75);
+    font-size: 14px;
+    line-height: 2;
+  }
+  .episode.open .ep-desc { max-height: 200px; padding-top: 18px; }
+  .episode .toggle {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,.2);
+    display: flex; align-items: center; justify-content: center;
+    transition: all .4s;
+    font-size: 22px;
+  }
+  .episode:hover .toggle { background: var(--gold); color: var(--deep); border-color: var(--gold); }
+  .episode.open .toggle { transform: rotate(45deg); background: var(--aqua); color: var(--deep); border-color: var(--aqua); }
+
+  /* === Stats === */
+  #stats {
+    background: var(--deep);
+    text-align: center;
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 40px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .stat {
+    padding: 36px 20px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(30, 203, 225, .08), transparent);
+    border: 1px solid rgba(30, 203, 225, .15);
+    transition: all .4s;
+  }
+  .stat:hover {
+    transform: translateY(-6px);
+    background: linear-gradient(180deg, rgba(255, 213, 107, .12), transparent);
+    border-color: var(--gold);
+  }
+  .stat .value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 56px;
+    font-weight: 900;
+    background: linear-gradient(180deg, var(--white), var(--aqua));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    margin-bottom: 12px;
+  }
+  .stat:hover .value {
+    background: linear-gradient(180deg, var(--white), var(--gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat .label {
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: rgba(255,255,255,.6);
+  }
+
+  /* === CTA === */
+  #subscribe {
+    background:
+      radial-gradient(ellipse at 50% 50%, rgba(255, 213, 107, .2), transparent 60%),
+      linear-gradient(135deg, #061d4a, #03132e);
+    text-align: center;
+    padding: 160px 8vw;
+  }
+  .subscribe-box {
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  .subscribe-box h2 {
+    font-size: clamp(34px, 6vw, 64px);
+    font-weight: 900;
+    line-height: 1.2;
+    margin-bottom: 30px;
+    background: linear-gradient(180deg, #fff, var(--gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .subscribe-box p {
+    color: rgba(243,247,255,.75);
+    font-size: 16px;
+    line-height: 2;
+    margin-bottom: 50px;
+  }
+
+  /* === Footer === */
+  footer {
+    padding: 40px 8vw;
+    text-align: center;
+    background: #02091c;
+    color: rgba(255,255,255,.4);
+    font-size: 12px;
+    letter-spacing: 2px;
+  }
+  footer .heart { color: var(--gold); }
+
+  /* === Animations === */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(40px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translate(-50%, 0); opacity: .6; }
+    50%      { transform: translate(-50%, 8px); opacity: 1; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50%      { transform: translateY(-12px) rotate(2deg); }
+  }
+  @keyframes pulse-ring {
+    0%   { transform: scale(.95); opacity: 1; }
+    100% { transform: scale(1.6); opacity: 0; }
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(60px);
+    transition: opacity 1s, transform 1s;
+  }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+
+  /* Mobile */
+  @media (max-width: 768px) {
+    body { cursor: auto; }
+    .cursor-dot, .cursor-ring { display: none; }
+    .btn, .card, .episode { cursor: pointer; }
+    nav ul { display: none; }
+    .about-grid { grid-template-columns: 1fr; gap: 50px; }
+    section.block { padding: 100px 6vw; }
+    .episode { grid-template-columns: 60px 1fr auto; gap: 16px; padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor-dot"></div>
+<div class="cursor-ring"></div>
+
+<nav id="nav">
+  <div class="logo">HOKO SHACHI</div>
+  <ul>
+    <li><a href="#about">ABOUT</a></li>
+    <li><a href="#contents">CONTENTS</a></li>
+    <li><a href="#episodes">EPISODES</a></li>
+    <li><a href="#subscribe">JOIN</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <canvas id="particles"></canvas>
+  <div class="hero-content">
+    <span class="tag">YOUTUBE CHANNEL</span>
+    <h1>HOKO<br>SHACHI</h1>
+    <div class="jp">ほこシャチ</div>
+    <p class="lead">
+      日常に潜む“好き”を、しなやかに泳ぎながら届ける。<br>
+      ほこシャチチャンネルへようこそ。
+    </p>
+    <div class="cta-row">
+      <a href="https://www.youtube.com/@hokosyachi" target="_blank" rel="noopener" class="btn btn-primary" data-hover>
+        ▶ チャンネルを見る
+      </a>
+      <a href="#about" class="btn btn-ghost" data-hover>
+        ABOUT を見る
+      </a>
+    </div>
+  </div>
+  <div class="scroll-indicator">SCROLL</div>
+</section>
+
+<!-- ABOUT -->
+<section id="about" class="block">
+  <div class="section-title reveal">
+    <span class="num">— 01</span>
+    <h2>ABOUT</h2>
+  </div>
+  <div class="about-grid">
+    <div class="about-visual reveal" id="aboutVisual">
+      <svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="g1" cx="50%" cy="50%">
+            <stop offset="0%" stop-color="#1ecbe1" stop-opacity=".4"/>
+            <stop offset="100%" stop-color="#1ecbe1" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ffd56b"/>
+            <stop offset="100%" stop-color="#f0a429"/>
+          </linearGradient>
+        </defs>
+        <circle cx="200" cy="200" r="180" fill="url(#g1)"/>
+        <!-- Stylized shachi (orca) silhouette with golden tail -->
+        <g id="shachi" style="transform-origin: 200px 200px;">
+          <path d="M70 220 Q120 150 200 160 Q280 170 320 200 Q300 240 240 240 L210 250 Q170 260 130 250 Q90 240 70 220 Z"
+                fill="#0a1f47" stroke="#1ecbe1" stroke-width="2"/>
+          <path d="M310 195 Q360 160 380 130 Q360 200 320 215 Z" fill="url(#g2)"/>
+          <circle cx="110" cy="210" r="4" fill="#ffd56b"/>
+          <path d="M180 180 Q210 175 250 185" stroke="#fff" stroke-width="3" fill="none" opacity=".6"/>
+        </g>
+        <!-- Bubbles -->
+        <circle class="bubble" cx="80"  cy="120" r="5" fill="#fff" opacity=".6"/>
+        <circle class="bubble" cx="340" cy="80"  r="3" fill="#fff" opacity=".5"/>
+        <circle class="bubble" cx="100" cy="320" r="6" fill="#fff" opacity=".4"/>
+        <circle class="bubble" cx="320" cy="300" r="4" fill="#fff" opacity=".6"/>
+      </svg>
+    </div>
+    <div class="about-text reveal">
+      <h3>日々をちょっと<span class="accent">特別</span>にする、<br>ほこシャチ流の<span class="accent">エンタメ</span>。</h3>
+      <p>
+        「ほこシャチ」は、好奇心と遊び心をテーマに、日常の中で見つけた“面白い”を映像でお届けするYouTubeチャンネルです。
+      </p>
+      <p>
+        飾らないリアクション、こだわりの編集、そして気の合う仲間たち。誰かの一日にちいさな笑いと驚きを届けることを目指しています。
+      </p>
+      <p>
+        雑談、検証、企画もの、Vlog ── ジャンルにとらわれず、その時いちばん面白いと思うものを真剣に。それがほこシャチの流儀です。
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- CONTENTS -->
+<section id="contents" class="block">
+  <div class="section-title reveal">
+    <span class="num">— 02</span>
+    <h2>CONTENTS</h2>
+  </div>
+  <div class="cards">
+    <div class="card reveal" data-hover>
+      <div class="card-inner">
+        <div class="num">01</div>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#ffd56b" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        <h4>雑談 / Talk</h4>
+        <p>カメラの前でも自然体。気の置けないトークから、ふと心に残るひとことまで。</p>
+      </div>
+    </div>
+    <div class="card reveal" data-hover>
+      <div class="card-inner">
+        <div class="num">02</div>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#ffd56b" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <h4>検証 / Challenge</h4>
+        <p>気になるアレ、やってみました。本気で取り組むからこそ生まれる笑いと感動。</p>
+      </div>
+    </div>
+    <div class="card reveal" data-hover>
+      <div class="card-inner">
+        <div class="num">03</div>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#ffd56b" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        <h4>Vlog / Daily</h4>
+        <p>切り取られた何気ない瞬間。シネマティックな映像で日常を物語に変えていきます。</p>
+      </div>
+    </div>
+    <div class="card reveal" data-hover>
+      <div class="card-inner">
+        <div class="num">04</div>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#ffd56b" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+        <h4>企画 / Project</h4>
+        <p>毎月変わる新企画。視聴者と一緒に作り上げる、参加型コンテンツも続々。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EPISODES -->
+<section id="episodes" class="block">
+  <div class="section-title reveal">
+    <span class="num">— 03</span>
+    <h2>PICK UP</h2>
+  </div>
+  <div class="episode-list">
+    <div class="episode reveal" data-hover>
+      <div class="ep-num">#01</div>
+      <div class="ep-info">
+        <h5>はじめまして、ほこシャチです。</h5>
+        <span>INTRODUCTION</span>
+      </div>
+      <div class="toggle">+</div>
+      <div class="ep-desc">チャンネル開設のきっかけと、これからやっていきたいこと。記念すべき第1回の自己紹介エピソード。</div>
+    </div>
+    <div class="episode reveal" data-hover>
+      <div class="ep-num">#02</div>
+      <div class="ep-info">
+        <h5>夜カフェで語る、好きなものリスト。</h5>
+        <span>TALK / Vlog</span>
+      </div>
+      <div class="toggle">+</div>
+      <div class="ep-desc">夜のカフェ、コーヒー片手にゆるりとトーク。最近ハマっているもの、これから挑戦したいことを語ります。</div>
+    </div>
+    <div class="episode reveal" data-hover>
+      <div class="ep-num">#03</div>
+      <div class="ep-info">
+        <h5>24時間チャレンジ、本気でやってみた。</h5>
+        <span>CHALLENGE</span>
+      </div>
+      <div class="toggle">+</div>
+      <div class="ep-desc">話題の24時間チャレンジに本気で挑戦。果たして無事にやり遂げられるのか?ほこシャチ流のオチも必見。</div>
+    </div>
+    <div class="episode reveal" data-hover>
+      <div class="ep-num">#04</div>
+      <div class="ep-info">
+        <h5>視聴者リクエスト企画 第1弾</h5>
+        <span>PROJECT</span>
+      </div>
+      <div class="toggle">+</div>
+      <div class="ep-desc">コメント欄から集まった100件以上のリクエストの中から、選ばれし企画を一気に消化。</div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section id="stats" class="block">
+  <div class="section-title reveal">
+    <span class="num">— 04</span>
+    <h2>NUMBERS</h2>
+  </div>
+  <div class="stat-grid">
+    <div class="stat reveal">
+      <div class="value" data-target="120">0</div>
+      <div class="label">VIDEOS</div>
+    </div>
+    <div class="stat reveal">
+      <div class="value" data-target="2024">0</div>
+      <div class="label">SINCE</div>
+    </div>
+    <div class="stat reveal">
+      <div class="value" data-target="365">0</div>
+      <div class="label">DAYS / YEAR</div>
+    </div>
+    <div class="stat reveal">
+      <div class="value" data-target="100">0</div>
+      <div class="label">% PASSION</div>
+    </div>
+  </div>
+</section>
+
+<!-- SUBSCRIBE -->
+<section id="subscribe" class="block">
+  <div class="subscribe-box reveal">
+    <h2>その続きは、<br>YouTubeで。</h2>
+    <p>
+      最新エピソード、限定企画、舞台裏──<br>
+      すべては「ほこシャチチャンネル」に集まります。チャンネル登録で、次の冒険を一緒に。
+    </p>
+    <a href="https://www.youtube.com/@hokosyachi" target="_blank" rel="noopener" class="btn btn-primary" data-hover style="font-size:16px; padding:20px 50px;">
+      ▶ チャンネル登録する
+    </a>
+  </div>
+</section>
+
+<footer>
+  <p>© 2026 HOKO SHACHI CHANNEL — Made with <span class="heart">♥</span> for curious minds.</p>
+</footer>
+
+<script>
+  // === Custom Cursor ===
+  const dot = document.querySelector('.cursor-dot');
+  const ring = document.querySelector('.cursor-ring');
+  let mx = 0, my = 0, rx = 0, ry = 0;
+
+  window.addEventListener('mousemove', (e) => {
+    mx = e.clientX; my = e.clientY;
+    dot.style.left = mx + 'px';
+    dot.style.top = my + 'px';
+  });
+
+  function animateRing() {
+    rx += (mx - rx) * 0.18;
+    ry += (my - ry) * 0.18;
+    ring.style.left = rx + 'px';
+    ring.style.top = ry + 'px';
+    requestAnimationFrame(animateRing);
+  }
+  animateRing();
+
+  document.querySelectorAll('[data-hover], a, .card, .episode, .btn').forEach(el => {
+    el.addEventListener('mouseenter', () => ring.classList.add('hover'));
+    el.addEventListener('mouseleave', () => ring.classList.remove('hover'));
+  });
+
+  // === Nav scroll bg ===
+  const nav = document.getElementById('nav');
+  window.addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', window.scrollY > 50);
+  });
+
+  // === Reveal on scroll ===
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // === Episode toggles ===
+  document.querySelectorAll('.episode').forEach(ep => {
+    ep.addEventListener('click', () => {
+      ep.classList.toggle('open');
+    });
+  });
+
+  // === Counter on view ===
+  const counters = document.querySelectorAll('.stat .value');
+  const counterIO = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const el = e.target;
+        const target = +el.dataset.target;
+        const dur = 1800;
+        const start = performance.now();
+        function step(now) {
+          const p = Math.min((now - start) / dur, 1);
+          const eased = 1 - Math.pow(1 - p, 3);
+          el.textContent = Math.floor(target * eased).toLocaleString();
+          if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+        counterIO.unobserve(el);
+      }
+    });
+  }, { threshold: 0.6 });
+  counters.forEach(c => counterIO.observe(c));
+
+  // === About visual: parallax tilt ===
+  const av = document.getElementById('aboutVisual');
+  const shachi = document.getElementById('shachi');
+  av.addEventListener('mousemove', (e) => {
+    const r = av.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - 0.5;
+    const y = (e.clientY - r.top) / r.height - 0.5;
+    av.style.transform = `rotateY(${x * 12}deg) rotateX(${-y * 12}deg) scale(1.02)`;
+    if (shachi) shachi.style.transform = `translate(${x * 20}px, ${y * 12}px)`;
+  });
+  av.addEventListener('mouseleave', () => {
+    av.style.transform = '';
+    if (shachi) shachi.style.transform = '';
+  });
+
+  // === Particles (hero) ===
+  const canvas = document.getElementById('particles');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [];
+
+  function resize() {
+    W = canvas.width  = canvas.offsetWidth  * devicePixelRatio;
+    H = canvas.height = canvas.offsetHeight * devicePixelRatio;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  class P {
+    constructor() {
+      this.reset();
+      this.y = Math.random() * H;
+    }
+    reset() {
+      this.x = Math.random() * W;
+      this.y = H + Math.random() * 40;
+      this.r = Math.random() * 2.5 + 0.5;
+      this.vy = -(Math.random() * 0.6 + 0.2);
+      this.vx = (Math.random() - 0.5) * 0.3;
+      this.a = Math.random() * 0.6 + 0.2;
+      this.gold = Math.random() > 0.85;
+    }
+    step() {
+      this.y += this.vy;
+      this.x += this.vx;
+      if (this.y < -10) this.reset();
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.r * devicePixelRatio, 0, Math.PI * 2);
+      ctx.fillStyle = this.gold
+        ? `rgba(255, 213, 107, ${this.a})`
+        : `rgba(111, 231, 243, ${this.a})`;
+      ctx.fill();
+    }
+  }
+
+  for (let i = 0; i < 80; i++) particles.push(new P());
+
+  let mouseX = -9999, mouseY = -9999;
+  canvas.addEventListener('mousemove', (e) => {
+    const r = canvas.getBoundingClientRect();
+    mouseX = (e.clientX - r.left) * devicePixelRatio;
+    mouseY = (e.clientY - r.top) * devicePixelRatio;
+  });
+
+  function loop() {
+    ctx.clearRect(0, 0, W, H);
+    particles.forEach(p => {
+      // mouse attraction
+      const dx = p.x - mouseX, dy = p.y - mouseY;
+      const d2 = dx*dx + dy*dy;
+      if (d2 < 18000) {
+        const f = (1 - d2 / 18000) * 0.04;
+        p.x += dx * f * 0.05;
+        p.y += dy * f * 0.05;
+      }
+      p.step();
+      p.draw();
+    });
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+  // === Hero click ripple ===
+  document.querySelector('.hero').addEventListener('click', (e) => {
+    if (e.target.closest('.btn, a')) return;
+    const ring = document.createElement('div');
+    ring.style.cssText = `
+      position:fixed; left:${e.clientX}px; top:${e.clientY}px;
+      width:30px; height:30px; border:2px solid var(--gold);
+      border-radius:50%; pointer-events:none; z-index:50;
+      transform: translate(-50%, -50%);
+      animation: pulse-ring .8s ease-out forwards;
+    `;
+    document.body.appendChild(ring);
+    setTimeout(() => ring.remove(), 800);
+
+    // also burst a few extra particles
+    for (let i = 0; i < 6; i++) {
+      const p = new P();
+      const r = canvas.getBoundingClientRect();
+      p.x = (e.clientX - r.left) * devicePixelRatio;
+      p.y = (e.clientY - r.top) * devicePixelRatio;
+      p.vy = -(Math.random() * 1.5 + 0.5);
+      p.vx = (Math.random() - 0.5) * 2;
+      p.gold = true;
+      particles.push(p);
+    }
+    if (particles.length > 200) particles.splice(0, particles.length - 200);
+  });
+</script>
+</body>
+</html>

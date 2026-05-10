@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>将棋</title>
+<style>
+  body {
+    font-family: "Yu Gothic", "Hiragino Sans", sans-serif;
+    background: #f4ecd8;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #333;
+  }
+  h1 { margin: 0 0 10px; }
+  #status {
+    font-size: 18px;
+    margin: 10px 0;
+    min-height: 28px;
+    font-weight: bold;
+  }
+  #game {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .hand {
+    width: 110px;
+    min-height: 540px;
+    background: #e8d8b0;
+    border: 2px solid #8b6f47;
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .hand-title {
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 6px;
+  }
+  .hand.white { transform: rotate(180deg); }
+  .hand.white .hand-title { transform: rotate(180deg); }
+  .hand-piece {
+    background: #f5deb3;
+    border: 1px solid #8b6f47;
+    border-radius: 4px;
+    padding: 4px 8px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 16px;
+    user-select: none;
+  }
+  .hand-piece:hover { background: #ffeac0; }
+  .hand-piece.selected { background: #ffd966; outline: 2px solid #d4a017; }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(9, 56px);
+    grid-template-rows: repeat(9, 60px);
+    background: #d8b48a;
+    border: 3px solid #5a3a1a;
+  }
+  .cell {
+    border: 1px solid #5a3a1a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+  }
+  .cell.highlight { background: rgba(255, 230, 100, 0.6); }
+  .cell.target { background: rgba(100, 220, 100, 0.5); }
+  .cell.last-move { background: rgba(100, 150, 255, 0.25); }
+  .cell.check { background: rgba(255, 80, 80, 0.5); }
+  .piece {
+    width: 48px;
+    height: 52px;
+    background: #f5deb3;
+    border: 1px solid #5a3a1a;
+    clip-path: polygon(50% 0%, 90% 15%, 100% 100%, 0% 100%, 10% 15%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: bold;
+    line-height: 1;
+    text-align: center;
+  }
+  .piece.white { transform: rotate(180deg); }
+  .piece.promoted { color: #b00; }
+  #controls {
+    margin-top: 16px;
+    display: flex;
+    gap: 10px;
+  }
+  button {
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    border: 1px solid #8b6f47;
+    background: #f5deb3;
+    border-radius: 4px;
+  }
+  button:hover { background: #ffeac0; }
+  #promotion-dialog {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  #promotion-dialog.show { display: flex; }
+  .dialog-box {
+    background: #fff;
+    padding: 24px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .dialog-box button { margin: 0 8px; padding: 12px 24px; font-size: 16px; }
+</style>
+</head>
+<body>
+<h1>将棋</h1>
+<div id="status">先手番です</div>
+<div id="game">
+  <div class="hand white" id="hand-white">
+    <div class="hand-title">後手 持駒</div>
+  </div>
+  <div id="board"></div>
+  <div class="hand black" id="hand-black">
+    <div class="hand-title">先手 持駒</div>
+  </div>
+</div>
+<div id="controls">
+  <button id="reset">最初から</button>
+  <button id="undo">待った</button>
+</div>
+
+<div id="promotion-dialog">
+  <div class="dialog-box">
+    <p>成りますか？</p>
+    <button id="promote-yes">成る</button>
+    <button id="promote-no">成らない</button>
+  </div>
+</div>
+
+<script>
+// ==== 駒の定義 ====
+// 駒種ID: K=玉/王, R=飛, B=角, G=金, S=銀, N=桂, L=香, P=歩
+// 成: +R=龍王, +B=龍馬, +S=成銀, +N=成桂, +L=成香, +P=と
+const KIND = { K:'K', R:'R', B:'B', G:'G', S:'S', N:'N', L:'L', P:'P' };
+const KANJI = {
+  K:'王', R:'飛', B:'角', G:'金', S:'銀', N:'桂', L:'香', P:'歩',
+  '+R':'龍', '+B':'馬', '+S':'全', '+N':'圭', '+L':'杏', '+P':'と'
+};
+// 黒(先手)を「玉」、白(後手)も「玉」(本来は王/玉だが簡略化)
+const PROMOTABLE = ['R','B','S','N','L','P'];
+const NON_PROMOTABLE = ['K','G'];
+
+// 駒の動き: dx, dy, slide(true=何マスでも, false=1マス)
+// 視点: black(先手) 基準。yはマイナスが前進(上)
+function getMoves(kind, owner) {
+  // ownerに応じて前後反転(blackは上向き=-1, whiteは下向き=+1)
+  const f = owner === 'black' ? -1 : 1;
+  switch(kind) {
+    case 'K': return step([[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]], f);
+    case 'R': return slide([[0,-1],[0,1],[-1,0],[1,0]], f);
+    case 'B': return slide([[-1,-1],[1,-1],[-1,1],[1,1]], f);
+    case 'G': return step([[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[0,1]], f);
+    case 'S': return step([[-1,-1],[0,-1],[1,-1],[-1,1],[1,1]], f);
+    case 'N': return step([[-1,-2],[1,-2]], f);
+    case 'L': return slide([[0,-1]], f);
+    case 'P': return step([[0,-1]], f);
+    case '+R': return [...slide([[0,-1],[0,1],[-1,0],[1,0]], f), ...step([[-1,-1],[1,-1],[-1,1],[1,1]], f)];
+    case '+B': return [...slide([[-1,-1],[1,-1],[-1,1],[1,1]], f), ...step([[0,-1],[0,1],[-1,0],[1,0]], f)];
+    case '+S': case '+N': case '+L': case '+P':
+      return step([[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[0,1]], f);
+  }
+  return [];
+}
+function step(dirs, f) { return dirs.map(([x,y]) => ({dx:x, dy:y*f, slide:false})); }
+function slide(dirs, f) { return dirs.map(([x,y]) => ({dx:x, dy:y*f, slide:true})); }
+
+// ==== ゲーム状態 ====
+let board, handBlack, handWhite, turn, lastMove, history;
+let selected = null; // {type:'board', x, y} or {type:'hand', kind, owner}
+let pendingMove = null; // 成り確認待ち
+
+function initGame() {
+  // 9x9 board[y][x], y=0が後手側上, y=8が先手側下
+  board = Array.from({length:9}, () => Array(9).fill(null));
+  // 後手(white) 上側
+  const backWhite = ['L','N','S','G','K','G','S','N','L'];
+  for (let x=0; x<9; x++) board[0][x] = {kind: backWhite[x], owner:'white'};
+  board[1][1] = {kind:'B', owner:'white'};
+  board[1][7] = {kind:'R', owner:'white'};
+  for (let x=0; x<9; x++) board[2][x] = {kind:'P', owner:'white'};
+  // 先手(black) 下側
+  const backBlack = ['L','N','S','G','K','G','S','N','L'];
+  for (let x=0; x<9; x++) board[8][x] = {kind: backBlack[x], owner:'black'};
+  board[7][7] = {kind:'B', owner:'black'};
+  board[7][1] = {kind:'R', owner:'black'};
+  for (let x=0; x<9; x++) board[6][x] = {kind:'P', owner:'black'};
+
+  handBlack = {R:0,B:0,G:0,S:0,N:0,L:0,P:0};
+  handWhite = {R:0,B:0,G:0,S:0,N:0,L:0,P:0};
+  turn = 'black';
+  lastMove = null;
+  history = [];
+  selected = null;
+  pendingMove = null;
+  render();
+}
+
+function cloneState() {
+  return {
+    board: board.map(row => row.map(c => c ? {...c} : null)),
+    handBlack: {...handBlack},
+    handWhite: {...handWhite},
+    turn, lastMove: lastMove ? {...lastMove} : null,
+  };
+}
+function restoreState(s) {
+  board = s.board.map(row => row.map(c => c ? {...c} : null));
+  handBlack = {...s.handBlack};
+  handWhite = {...s.handWhite};
+  turn = s.turn;
+  lastMove = s.lastMove ? {...s.lastMove} : null;
+}
+
+// ==== 動き候補 ====
+function legalMovesFrom(x, y) {
+  const p = board[y][x];
+  if (!p) return [];
+  const moves = getMoves(p.kind, p.owner);
+  const out = [];
+  for (const m of moves) {
+    let nx = x + m.dx, ny = y + m.dy;
+    while (nx >= 0 && nx < 9 && ny >= 0 && ny < 9) {
+      const t = board[ny][nx];
+      if (!t) {
+        out.push({x:nx, y:ny});
+      } else {
+        if (t.owner !== p.owner) out.push({x:nx, y:ny});
+        break;
+      }
+      if (!m.slide) break;
+      nx += m.dx; ny += m.dy;
+    }
+  }
+  // 自玉が取られる手を除外
+  return out.filter(mv => !leavesKingInCheck(x, y, mv.x, mv.y, null, p.owner));
+}
+
+function legalDropsFor(kind, owner) {
+  const out = [];
+  for (let y=0; y<9; y++) {
+    for (let x=0; x<9; x++) {
+      if (board[y][x]) continue;
+      if (!canDrop(kind, owner, x, y)) continue;
+      if (leavesKingInCheck(null, null, x, y, {kind, owner}, owner)) continue;
+      out.push({x, y});
+    }
+  }
+  return out;
+}
+
+function canDrop(kind, owner, x, y) {
+  // 行きどころのない駒を禁止
+  if (kind === 'P' || kind === 'L') {
+    if (owner === 'black' && y === 0) return false;
+    if (owner === 'white' && y === 8) return false;
+  }
+  if (kind === 'N') {
+    if (owner === 'black' && y <= 1) return false;
+    if (owner === 'white' && y >= 7) return false;
+  }
+  // 二歩禁止
+  if (kind === 'P') {
+    for (let yy=0; yy<9; yy++) {
+      const c = board[yy][x];
+      if (c && c.owner === owner && c.kind === 'P') return false;
+    }
+    // 打ち歩詰め禁止
+    if (isUchifuzume(owner, x, y)) return false;
+  }
+  return true;
+}
+
+function isUchifuzume(owner, x, y) {
+  // 仮に歩を打って詰みになるか
+  const saved = cloneState();
+  board[y][x] = {kind:'P', owner};
+  if (owner === 'black') handBlack.P--;
+  else handWhite.P--;
+  const enemy = owner === 'black' ? 'white' : 'black';
+  // 歩を打って王手?
+  if (!isInCheck(enemy)) { restoreState(saved); return false; }
+  const mate = !hasAnyLegalMove(enemy);
+  restoreState(saved);
+  return mate;
+}
+
+// 指定した手を仮に指して、自玉が王手になっているか
+function leavesKingInCheck(fromX, fromY, toX, toY, dropPiece, owner) {
+  const saved = cloneState();
+  if (dropPiece) {
+    board[toY][toX] = {...dropPiece};
+    if (owner === 'black') handBlack[dropPiece.kind]--;
+    else handWhite[dropPiece.kind]--;
+  } else {
+    const p = board[fromY][fromX];
+    const cap = board[toY][toX];
+    board[toY][toX] = p;
+    board[fromY][fromX] = null;
+    if (cap) {
+      const baseKind = cap.kind.replace('+','');
+      if (owner === 'black') handBlack[baseKind]++;
+      else handWhite[baseKind]++;
+    }
+  }
+  const inCheck = isInCheck(owner);
+  restoreState(saved);
+  return inCheck;
+}
+
+function findKing(owner) {
+  for (let y=0; y<9; y++) for (let x=0; x<9; x++) {
+    const p = board[y][x];
+    if (p && p.owner === owner && p.kind === 'K') return {x,y};
+  }
+  return null;
+}
+
+function isInCheck(owner) {
+  const k = findKing(owner);
+  if (!k) return false;
+  return isAttacked(k.x, k.y, owner === 'black' ? 'white' : 'black');
+}
+
+function isAttacked(x, y, byOwner) {
+  for (let yy=0; yy<9; yy++) for (let xx=0; xx<9; xx++) {
+    const p = board[yy][xx];
+    if (!p || p.owner !== byOwner) continue;
+    const moves = getMoves(p.kind, p.owner);
+    for (const m of moves) {
+      let nx = xx + m.dx, ny = yy + m.dy;
+      while (nx >= 0 && nx < 9 && ny >= 0 && ny < 9) {
+        if (nx === x && ny === y) return true;
+        const t = board[ny][nx];
+        if (t) break;
+        if (!m.slide) break;
+        nx += m.dx; ny += m.dy;
+      }
+    }
+  }
+  return false;
+}
+
+function hasAnyLegalMove(owner) {
+  for (let y=0; y<9; y++) for (let x=0; x<9; x++) {
+    const p = board[y][x];
+    if (p && p.owner === owner) {
+      if (legalMovesFrom(x, y).length > 0) return true;
+    }
+  }
+  const hand = owner === 'black' ? handBlack : handWhite;
+  for (const k of Object.keys(hand)) {
+    if (hand[k] > 0 && legalDropsFor(k, owner).length > 0) return true;
+  }
+  return false;
+}
+
+// ==== 成り判定 ====
+function inPromotionZone(y, owner) {
+  return owner === 'black' ? y <= 2 : y >= 6;
+}
+function mustPromote(kind, toY, owner) {
+  if (kind === 'P' || kind === 'L') {
+    return owner === 'black' ? toY === 0 : toY === 8;
+  }
+  if (kind === 'N') {
+    return owner === 'black' ? toY <= 1 : toY >= 7;
+  }
+  return false;
+}
+function canPromote(kind, fromY, toY, owner) {
+  if (!PROMOTABLE.includes(kind)) return false;
+  return inPromotionZone(fromY, owner) || inPromotionZone(toY, owner);
+}
+
+// ==== 描画 ====
+const boardEl = document.getElementById('board');
+const handBlackEl = document.getElementById('hand-black');
+const handWhiteEl = document.getElementById('hand-white');
+const statusEl = document.getElementById('status');
+
+function render() {
+  boardEl.innerHTML = '';
+  const targets = computeTargets();
+  const checkOwner = isInCheck(turn) ? turn : null;
+  const checkPos = checkOwner ? findKing(checkOwner) : null;
+
+  for (let y=0; y<9; y++) {
+    for (let x=0; x<9; x++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.x = x; cell.dataset.y = y;
+      if (selected && selected.type === 'board' && selected.x === x && selected.y === y) cell.classList.add('highlight');
+      if (targets.some(t => t.x === x && t.y === y)) cell.classList.add('target');
+      if (lastMove && ((lastMove.fromX===x && lastMove.fromY===y) || (lastMove.toX===x && lastMove.toY===y))) cell.classList.add('last-move');
+      if (checkPos && checkPos.x===x && checkPos.y===y) cell.classList.add('check');
+      const p = board[y][x];
+      if (p) {
+        const piece = document.createElement('div');
+        piece.className = 'piece' + (p.owner==='white'?' white':'') + (p.kind.startsWith('+')?' promoted':'');
+        piece.textContent = KANJI[p.kind];
+        cell.appendChild(piece);
+      }
+      cell.addEventListener('click', () => onCellClick(x, y));
+      boardEl.appendChild(cell);
+    }
+  }
+  renderHand(handBlackEl, handBlack, 'black');
+  renderHand(handWhiteEl, handWhite, 'white');
+}
+
+function renderHand(el, hand, owner) {
+  // タイトル以外を消す
+  while (el.children.length > 1) el.removeChild(el.lastChild);
+  const order = ['R','B','G','S','N','L','P'];
+  for (const k of order) {
+    if (hand[k] > 0) {
+      const div = document.createElement('div');
+      div.className = 'hand-piece';
+      div.textContent = KANJI[k] + (hand[k] > 1 ? '×' + hand[k] : '');
+      if (selected && selected.type==='hand' && selected.kind===k && selected.owner===owner) div.classList.add('selected');
+      div.addEventListener('click', () => onHandClick(k, owner));
+      el.appendChild(div);
+    }
+  }
+}
+
+function computeTargets() {
+  if (!selected) return [];
+  if (selected.type === 'board') return legalMovesFrom(selected.x, selected.y);
+  if (selected.type === 'hand') return legalDropsFor(selected.kind, selected.owner);
+  return [];
+}
+
+// ==== 操作 ====
+function onCellClick(x, y) {
+  if (pendingMove) return;
+  const p = board[y][x];
+  if (selected) {
+    const targets = computeTargets();
+    const match = targets.find(t => t.x === x && t.y === y);
+    if (match) {
+      if (selected.type === 'board') tryMove(selected.x, selected.y, x, y);
+      else tryDrop(selected.kind, selected.owner, x, y);
+      return;
+    }
+  }
+  // 自分の駒を選択
+  if (p && p.owner === turn) {
+    selected = {type:'board', x, y};
+  } else {
+    selected = null;
+  }
+  render();
+}
+
+function onHandClick(kind, owner) {
+  if (pendingMove) return;
+  if (owner !== turn) return;
+  if (selected && selected.type==='hand' && selected.kind===kind) {
+    selected = null;
+  } else {
+    selected = {type:'hand', kind, owner};
+  }
+  render();
+}
+
+function tryMove(fromX, fromY, toX, toY) {
+  const p = board[fromY][fromX];
+  const baseKind = p.kind.replace('+','');
+  const isAlreadyPromoted = p.kind.startsWith('+');
+  const must = !isAlreadyPromoted && mustPromote(baseKind, toY, p.owner);
+  const can = !isAlreadyPromoted && canPromote(baseKind, fromY, toY, p.owner);
+  if (must) {
+    doMove(fromX, fromY, toX, toY, true);
+  } else if (can) {
+    pendingMove = {fromX, fromY, toX, toY};
+    document.getElementById('promotion-dialog').classList.add('show');
+  } else {
+    doMove(fromX, fromY, toX, toY, false);
+  }
+}
+
+function doMove(fromX, fromY, toX, toY, promote) {
+  history.push(cloneState());
+  const p = board[fromY][fromX];
+  const cap = board[toY][toX];
+  if (cap) {
+    const baseKind = cap.kind.replace('+','');
+    if (turn === 'black') handBlack[baseKind]++;
+    else handWhite[baseKind]++;
+  }
+  if (promote && !p.kind.startsWith('+')) {
+    p.kind = '+' + p.kind;
+  }
+  board[toY][toX] = p;
+  board[fromY][fromX] = null;
+  lastMove = {fromX, fromY, toX, toY};
+  finishTurn();
+}
+
+function tryDrop(kind, owner, x, y) {
+  history.push(cloneState());
+  board[y][x] = {kind, owner};
+  if (owner === 'black') handBlack[kind]--;
+  else handWhite[kind]--;
+  lastMove = {fromX:null, fromY:null, toX:x, toY:y};
+  finishTurn();
+}
+
+function finishTurn() {
+  selected = null;
+  turn = turn === 'black' ? 'white' : 'black';
+  render();
+  // 勝敗判定
+  if (!hasAnyLegalMove(turn)) {
+    if (isInCheck(turn)) {
+      statusEl.textContent = (turn === 'black' ? '後手' : '先手') + 'の勝ち！(詰み)';
+    } else {
+      statusEl.textContent = '引き分け(ステイルメイト)';
+    }
+  } else if (isInCheck(turn)) {
+    statusEl.textContent = (turn === 'black' ? '先手番(王手！)' : '後手番(王手！)');
+  } else {
+    statusEl.textContent = (turn === 'black' ? '先手番です' : '後手番です');
+  }
+}
+
+// 成り確認ダイアログ
+document.getElementById('promote-yes').addEventListener('click', () => {
+  document.getElementById('promotion-dialog').classList.remove('show');
+  const m = pendingMove; pendingMove = null;
+  doMove(m.fromX, m.fromY, m.toX, m.toY, true);
+});
+document.getElementById('promote-no').addEventListener('click', () => {
+  document.getElementById('promotion-dialog').classList.remove('show');
+  const m = pendingMove; pendingMove = null;
+  doMove(m.fromX, m.fromY, m.toX, m.toY, false);
+});
+
+document.getElementById('reset').addEventListener('click', initGame);
+document.getElementById('undo').addEventListener('click', () => {
+  if (history.length === 0) return;
+  restoreState(history.pop());
+  selected = null;
+  render();
+  if (isInCheck(turn)) {
+    statusEl.textContent = (turn === 'black' ? '先手番(王手！)' : '後手番(王手！)');
+  } else {
+    statusEl.textContent = (turn === 'black' ? '先手番です' : '後手番です');
+  }
+});
+
+initGame();
+</script>
+</body>
+</html>
