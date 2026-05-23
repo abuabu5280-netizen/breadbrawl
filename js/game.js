@@ -1381,7 +1381,8 @@ class BreadSelectScene extends Phaser.Scene {
     }).setOrigin(0.5), 92);
 
     // 本文
-    const bonus = Math.max(0, level - 2);
+    const s2Weight = level < 3 ? 0 : 1 + (level - 2) * 0.10;
+    const s2Rate   = level < 3 ? 0 : Math.round(20 * s2Weight / (9 + 20 * s2Weight) * 100);
     const body = [
       '高レベルほど未発見のパンと',
       'バトルしやすくなります！',
@@ -1391,10 +1392,12 @@ class BreadSelectScene extends Phaser.Scene {
       '',
       '【ステージ2】',
       'レベル3から出現します。',
-      'レベルが1上がるごとに、',
-      '未発見パンの出現率が10%上昇します。',
+      'レベルが上がるほど未発見のパンが',
+      '出やすくなります。',
       '',
-      `現在のボーナス：+${bonus * 10}%（レベル${level}）`,
+      level < 3
+        ? '（レベル3で解放）\nLv3:71%  Lv5:74%  Lv10:80%'
+        : `現在のS2出現率：約${s2Rate}%（レベル${level}）\nLv3:71%  Lv5:74%  Lv10:80%`,
     ].join('\n');
     mk(this.add.text(GAME_W / 2, dY + 56, body, {
       fontSize: '13px', fontFamily: 'Arial', color: '#3E2010',
