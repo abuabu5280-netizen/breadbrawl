@@ -187,7 +187,37 @@ const SoundFX = {
         osc.start(now + 0.005); osc.stop(now + dur + 0.02);
       });
     } catch(e) {}
-  }
+  },
+  special() {
+    try {
+      const ctx = this.ctx(), now = ctx.currentTime;
+      // ズシン！重い低音インパクト
+      const ob = ctx.createOscillator(), gb = ctx.createGain();
+      ob.type = 'triangle'; ob.connect(gb); gb.connect(ctx.destination);
+      ob.frequency.setValueAtTime(80, now); ob.frequency.exponentialRampToValueAtTime(28, now + 0.28);
+      gb.gain.setValueAtTime(0.9, now); gb.gain.exponentialRampToValueAtTime(0.001, now + 0.30);
+      ob.start(now); ob.stop(now + 0.32);
+      // 上昇ホイッスル
+      [440, 660, 880, 1320].forEach((f, i) => {
+        const t = now + i * 0.055;
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.connect(g); g.connect(ctx.destination);
+        o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 1.5, t + 0.12);
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.28, t + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+        o.start(t); o.stop(t + 0.24);
+      });
+      // ノイズ衝撃
+      const bsz = Math.floor(ctx.sampleRate * 0.06);
+      const buf = ctx.createBuffer(1, bsz, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < bsz; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / bsz);
+      const ns = ctx.createBufferSource(), ng = ctx.createGain();
+      ns.buffer = buf; ns.connect(ng); ng.connect(ctx.destination);
+      ng.gain.setValueAtTime(0.5, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+      ns.start(now);
+    } catch(e) {}
+  },
 };
 
 // ========================================
@@ -500,6 +530,35 @@ const BREAD_DATA = {
 const BREAD_LIST = Object.values(BREAD_DATA);
 const STAGE1_BREADS = BREAD_LIST.filter(b => b.stage === 1);
 const STAGE2_BREADS = BREAD_LIST.filter(b => b.stage === 2);
+
+// ========================================
+// 必殺技マッピング
+// ========================================
+const SPECIAL_MAP = {
+  // 日本オリジナル → 匠の一撃
+  shokupan: 'takumi', mushipan: 'takumi', anpan: 'takumi', shiopan: 'takumi',
+  cream_pan: 'takumi', koppe_pan: 'takumi', age_pan: 'takumi', chigiri_pan: 'takumi',
+  // 日本の創造力 → 和洋炸裂
+  melonpan: 'wayo', currypan: 'wayo', chocorone: 'wayo', cheese_pan: 'wayo',
+  // フランス王室 → ヴェルサイユ砲
+  croissant: 'versailles', baguette: 'versailles', brioche: 'versailles',
+  pain_au_chocolat: 'versailles', epi: 'versailles',
+  // 中欧の硬派 → ゲルマン鉄拳
+  pretzel: 'german', rye_bread: 'german', kaiser_roll: 'german',
+  // 英米スイーツ → ロイヤルスイング
+  cinnamon_roll: 'royal', donut: 'royal', muffin: 'royal', scone: 'royal',
+  maple_danish: 'royal', bagel: 'royal',
+  // 地中海・アジア → アラビアン爆炎
+  focaccia: 'arabian', naan: 'arabian', pita: 'arabian', kokuto_pan: 'arabian',
+};
+const SPECIAL_DATA = {
+  takumi:     { name: '匠の一撃',        color: 0xCC2020, text: '#FF8080' },
+  wayo:       { name: '和洋炸裂',        color: 0xFF8800, text: '#FFDD44' },
+  versailles: { name: 'ヴェルサイユ砲', color: 0x2244CC, text: '#88AAFF' },
+  german:     { name: 'ゲルマン鉄拳',   color: 0x555555, text: '#CCCCCC' },
+  royal:      { name: 'ロイヤルスイング',color: 0x229922, text: '#88FF88' },
+  arabian:    { name: 'アラビアン爆炎', color: 0xCC4400, text: '#FF9944' },
+};
 
 // ピクセル画像ファイル名マッピング（breadpicture_dot 内の実際のファイル名）
 const PIXEL_IMG_MAP = {
@@ -1574,6 +1633,13 @@ class BattleScene extends Phaser.Scene {
     this.enemyGrounded   = true;
     this.playerJumpsLeft = 2;
     this.enemyJumpsLeft  = 2;
+    this.playerSpecialCount = 0;
+    this.playerSpecialUsed  = false;
+    this.playerDmgBonus     = 1.0;
+    this.playerDefMult      = 1.0;
+    this.playerSpeedMult    = 1.0;
+    this.arabianTimer       = null;
+    this.buffAura           = null;
 
     // 横視点用の重力を有効化
     this.matter.world.setGravity(0, 2.2);
@@ -1584,6 +1650,7 @@ class BattleScene extends Phaser.Scene {
     this.createNameLabels();
     this.createBreads();
     this.createTimer();
+    this.createSpecialButton();
     this.showVSIntro(); // AI開始は showVSIntro の onComplete 内で呼ぶ
     this.setupInput();
     this.aiAggression = 0.5; // aggression だけ初期化（スケジュールはまだしない）
@@ -1874,6 +1941,273 @@ class BattleScene extends Phaser.Scene {
     this.time.addEvent({ delay: 1000, callback: this.tickTimer, callbackScope: this, loop: true });
   }
 
+  createSpecialButton() {
+    const bx = 68, by = GAME_H - 54;
+    this.spBg = this.add.graphics();
+    this.spText = this.add.text(bx, by, '必殺！ 0/20', {
+      fontSize: '13px', fontFamily: '"Arial Rounded MT Bold", Arial',
+      color: '#666666', stroke: '#0A0604', strokeThickness: 2
+    }).setOrigin(0.5).setDepth(2);
+    this.spZone = this.add.zone(bx, by, 116, 36).setInteractive().setDepth(2);
+    this.spZone.on('pointerdown', () => this.activateSpecial());
+    this.updateSpecialButton();
+  }
+
+  updateSpecialButton() {
+    const bx = 68, by = GAME_H - 54;
+    const cnt = Math.min(this.playerSpecialCount, 20);
+    const ready = cnt >= 20 && !this.playerSpecialUsed;
+    const used  = this.playerSpecialUsed;
+    this.spBg.clear();
+    const bgColor = used ? 0x222222 : (ready ? 0xCC6600 : 0x1A0E06);
+    const bdColor = used ? 0x444444 : (ready ? 0xFFAA00 : 0x553322);
+    this.spBg.fillStyle(bgColor, used ? 0.5 : 0.88);
+    this.spBg.fillRoundedRect(bx - 58, by - 18, 116, 36, 8);
+    this.spBg.lineStyle(2, bdColor, used ? 0.4 : 0.85);
+    this.spBg.strokeRoundedRect(bx - 58, by - 18, 116, 36, 8);
+    // プログレスバー
+    if (!used) {
+      this.spBg.fillStyle(0x331100, 0.7);
+      this.spBg.fillRoundedRect(bx - 52, by + 5, 104, 6, 3);
+      const fillW = Math.round(104 * cnt / 20);
+      if (fillW > 0) {
+        this.spBg.fillStyle(ready ? 0xFFCC00 : 0xAA6622, 1);
+        this.spBg.fillRoundedRect(bx - 52, by + 5, fillW, 6, 3);
+      }
+    }
+    if (used) {
+      this.spText.setText('必殺！ 使用済');
+      this.spText.setColor('#444444');
+    } else if (ready) {
+      this.spText.setText('⚡ 必殺！');
+      this.spText.setColor('#FFDD44');
+    } else {
+      this.spText.setText(`必殺！ ${cnt}/20`);
+      this.spText.setColor('#888888');
+    }
+  }
+
+  addSpecialAction() {
+    if (this.playerSpecialUsed || this.playerSpecialCount >= 20 || this.gameOver) return;
+    this.playerSpecialCount++;
+    this.updateSpecialButton();
+    if (this.playerSpecialCount >= 20) {
+      // 点灯アニメ
+      this.tweens.add({ targets: this.spBg, alpha: 0.6, duration: 160, yoyo: true, repeat: 2 });
+      this.tweens.add({ targets: this.spText, scaleX: 1.2, scaleY: 1.2, duration: 200, yoyo: true });
+    }
+  }
+
+  activateSpecial() {
+    if (this.playerSpecialUsed || this.playerSpecialCount < 20 || this.gameOver) return;
+    this.playerSpecialUsed = true;
+    this.spZone.disableInteractive();
+    this.updateSpecialButton();
+    const type = SPECIAL_MAP[this.playerData.id] || 'takumi';
+    const sd = SPECIAL_DATA[type];
+    this.showCutIn(sd.name, sd.color, sd.text, () => this.doSpecialEffect(type));
+  }
+
+  showCutIn(techName, color, textColor, callback) {
+    const prevGameOver = this.gameOver;
+    this.gameOver = true;
+    const cx = GAME_W / 2, cy = GAME_H / 2;
+    const STRIP_H = 72;
+
+    // 上下バー（画面外からスライドイン）
+    const topBar = this.add.graphics().setDepth(60);
+    topBar.fillStyle(0x050302, 1);
+    topBar.fillRect(0, 0, GAME_W, cy - STRIP_H / 2);
+    topBar.y = -(cy - STRIP_H / 2);
+
+    const botBar = this.add.graphics().setDepth(60);
+    botBar.fillStyle(0x050302, 1);
+    botBar.fillRect(0, cy + STRIP_H / 2, GAME_W, cy - STRIP_H / 2);
+    botBar.y = cy - STRIP_H / 2;
+
+    // 中央ストライプ
+    const stripe = this.add.graphics().setDepth(61).setAlpha(0);
+    stripe.fillStyle(color, 0.88);
+    stripe.fillRect(0, cy - STRIP_H / 2, GAME_W, STRIP_H);
+
+    // 斜め光線（演出）
+    const rays = this.add.graphics().setDepth(62).setAlpha(0);
+    rays.fillStyle(0xFFFFFF, 0.12);
+    for (let i = 0; i < 6; i++) {
+      const rx = (i * 80) - 40;
+      rays.fillTriangle(rx, cy - STRIP_H / 2, rx + 30, cy - STRIP_H / 2, rx - 10, cy + STRIP_H / 2);
+    }
+
+    // 技名テキスト
+    const nameT = this.add.text(cx, cy, techName, {
+      fontSize: '36px', fontFamily: '"Arial Rounded MT Bold", Arial',
+      color: textColor, stroke: '#000000', strokeThickness: 5,
+      shadow: { offsetX: 2, offsetY: 2, color: '#000000', blur: 4, fill: true }
+    }).setOrigin(0.5).setAlpha(0).setDepth(63).setScale(0.5);
+
+    SoundFX.special();
+
+    // バーをスライドイン
+    this.tweens.add({
+      targets: topBar, y: 0,
+      duration: 220, ease: 'Power3'
+    });
+    this.tweens.add({
+      targets: botBar, y: 0,
+      duration: 220, ease: 'Power3',
+      onComplete: () => {
+        // ストライプ・テキスト表示
+        this.tweens.add({ targets: [stripe, rays], alpha: 1, duration: 160 });
+        this.tweens.add({
+          targets: nameT, alpha: 1, scaleX: 1, scaleY: 1,
+          duration: 200, ease: 'Back.easeOut'
+        });
+        // 保持後フェードアウト
+        this.time.delayedCall(800, () => {
+          this.tweens.add({ targets: [topBar, botBar, stripe, rays, nameT], alpha: 0, duration: 250,
+            onComplete: () => {
+              [topBar, botBar, stripe, rays, nameT].forEach(o => o.destroy());
+              if (!prevGameOver) this.gameOver = false;
+              callback();
+            }
+          });
+        });
+      }
+    });
+  }
+
+  doSpecialEffect(type) {
+    switch (type) {
+      case 'takumi': {
+        // 相手の最大HPの20%ダメージ
+        const dmg = this.enemyMaxHP * 0.20;
+        this.enemyHP = Math.max(0, this.enemyHP - dmg);
+        this.updateHPBars();
+        // 斬撃エフェクト
+        for (let i = 0; i < 3; i++) {
+          const slash = this.add.graphics().setDepth(20);
+          const sy = GAME_H * 0.35 + i * 60;
+          slash.lineStyle(3 + i, 0xFF4422, 0.9);
+          slash.lineBetween(-30, sy - 20, GAME_W + 30, sy + 20);
+          slash.lineStyle(1, 0xFFAA88, 0.6);
+          slash.lineBetween(-30, sy - 14, GAME_W + 30, sy + 26);
+          this.tweens.add({ targets: slash, x: 40 + i * 10, alpha: 0, duration: 380, ease: 'Power2', onComplete: () => slash.destroy() });
+        }
+        SoundFX.clash();
+        if (this.enemyHP <= 0) this.endGame();
+        break;
+      }
+      case 'wayo': {
+        // 5秒間 スピード・攻撃力+30%
+        this.playerDmgBonus = 1.3;
+        this.playerSpeedMult = 1.3;
+        this._spawnBuffAura(0xFF8800);
+        this.time.delayedCall(5000, () => { this.playerDmgBonus = 1.0; this.playerSpeedMult = 1.0; this._removeBuffAura(); });
+        break;
+      }
+      case 'versailles': {
+        // 相手を真上に吹き飛ばす
+        if (this.enemyBody) {
+          this.matter.body.setVelocity(this.enemyBody, { x: 0, y: -28 });
+          // 衝撃波リング
+          for (let r = 0; r < 3; r++) {
+            const ring = this.add.graphics().setDepth(20);
+            const ex = this.enemyBody.position.x, ey = this.enemyBody.position.y;
+            ring.lineStyle(3, 0x88AAFF, 0.8); ring.strokeCircle(ex, ey, 20);
+            this.tweens.add({ targets: ring, scaleX: 4, scaleY: 4, alpha: 0, duration: 400 + r * 80,
+              delay: r * 100, onComplete: () => ring.destroy() });
+          }
+        }
+        SoundFX.challenge();
+        break;
+      }
+      case 'german': {
+        // 5秒間 受けるダメージ半減
+        this.playerDefMult = 0.5;
+        this._spawnBuffAura(0x888888);
+        this.time.delayedCall(5000, () => { this.playerDefMult = 1.0; this._removeBuffAura(); });
+        break;
+      }
+      case 'royal': {
+        // 自分の最大HPの20%回復
+        const heal = this.playerMaxHP * 0.20;
+        this.playerHP = Math.min(this.playerMaxHP, this.playerHP + heal);
+        this.updateHPBars();
+        // 緑の回復エフェクト
+        for (let i = 0; i < 14; i++) {
+          const px = this.playerBody ? this.playerBody.position.x : GAME_W * 0.25;
+          const py = this.playerBody ? this.playerBody.position.y : GAME_H * 0.5;
+          const p = this.add.circle(px + Phaser.Math.Between(-25, 25), py + Phaser.Math.Between(-25, 25), Phaser.Math.Between(4, 9), 0x44FF88);
+          p.setDepth(20);
+          this.tweens.add({ targets: p, y: p.y - Phaser.Math.Between(50, 90), alpha: 0, duration: Phaser.Math.Between(500, 900), onComplete: () => p.destroy() });
+        }
+        break;
+      }
+      case 'arabian': {
+        // 5秒間 毎秒3%継続ダメージ（計15%）
+        let ticks = 0;
+        const dotTick = () => {
+          if (this.gameOver || ticks >= 5) return;
+          ticks++;
+          const dot = this.enemyMaxHP * 0.03;
+          this.enemyHP = Math.max(0, this.enemyHP - dot);
+          this.updateHPBars();
+          // 炎パーティクル
+          const ex = this.enemyBody ? this.enemyBody.position.x : GAME_W * 0.75;
+          const ey = this.enemyBody ? this.enemyBody.position.y : GAME_H * 0.5;
+          for (let i = 0; i < 6; i++) {
+            const f = this.add.circle(ex + Phaser.Math.Between(-18, 18), ey, Phaser.Math.Between(3, 7), Phaser.Math.RND.pick([0xFF6600, 0xFF4400, 0xFFAA00]));
+            f.setDepth(20);
+            this.tweens.add({ targets: f, y: f.y - Phaser.Math.Between(30, 60), alpha: 0, scaleX: 0.3, scaleY: 0.3, duration: Phaser.Math.Between(400, 700), onComplete: () => f.destroy() });
+          }
+          if (this.enemyHP <= 0) { this.endGame(); return; }
+          this.arabianTimer = this.time.delayedCall(1000, dotTick);
+        };
+        this.arabianTimer = this.time.delayedCall(1000, dotTick);
+        // 炎オーラ（敵に赤いオーラ）
+        this._spawnEnemyDebuffAura(0xFF4400);
+        this.time.delayedCall(5000, () => this._removeEnemyDebuffAura());
+        break;
+      }
+    }
+  }
+
+  _spawnBuffAura(color) {
+    if (this.buffAura) { this.buffAura.destroy(); this.buffAura = null; }
+    if (!this.playerG) return;
+    this.buffAura = this.add.graphics().setDepth(4);
+    const update = () => {
+      if (!this.buffAura || !this.playerG) return;
+      this.buffAura.clear();
+      this.buffAura.lineStyle(3, color, 0.55 + Math.sin(Date.now() * 0.008) * 0.3);
+      this.buffAura.strokeCircle(this.playerG.x, this.playerG.y, this.playerData.radius * 1.5);
+    };
+    this.buffAuraEvent = this.time.addEvent({ delay: 50, callback: update, loop: true });
+  }
+
+  _removeBuffAura() {
+    if (this.buffAura) { this.buffAura.destroy(); this.buffAura = null; }
+    if (this.buffAuraEvent) { this.buffAuraEvent.remove(); this.buffAuraEvent = null; }
+  }
+
+  _spawnEnemyDebuffAura(color) {
+    if (this.debuffAura) { this.debuffAura.destroy(); this.debuffAura = null; }
+    if (!this.enemyG) return;
+    this.debuffAura = this.add.graphics().setDepth(4);
+    const update = () => {
+      if (!this.debuffAura || !this.enemyG) return;
+      this.debuffAura.clear();
+      this.debuffAura.lineStyle(3, color, 0.55 + Math.sin(Date.now() * 0.009) * 0.3);
+      this.debuffAura.strokeCircle(this.enemyG.x, this.enemyG.y, this.enemyData.radius * 1.5);
+    };
+    this.debuffAuraEvent = this.time.addEvent({ delay: 50, callback: update, loop: true });
+  }
+
+  _removeEnemyDebuffAura() {
+    if (this.debuffAura) { this.debuffAura.destroy(); this.debuffAura = null; }
+    if (this.debuffAuraEvent) { this.debuffAuraEvent.remove(); this.debuffAuraEvent = null; }
+  }
+
   tickTimer() {
     if (this.gameOver) return;
     this.timeLeft--;
@@ -1898,14 +2232,16 @@ class BattleScene extends Phaser.Scene {
       if (isUpSwipe && this.playerJumpsLeft > 0) {
         // ジャンプ
         this.playerJumpsLeft--;
+        this.addSpecialAction();
         this.performJump(this.playerBody, nx, this.playerData);
         this.updateHPBars();
       } else if (isHorzSwipe) {
         // ダッシュ攻撃（空中は移動量を抑制）
         const airMult = this.playerGrounded ? 1.0 : 0.4;
-        const dashSpd = Math.min(len / 42, 0.65) * (0.5 + this.playerData.saku * 0.18) * 20 * airMult;
+        const dashSpd = Math.min(len / 42, 0.65) * (0.5 + this.playerData.saku * 0.18) * 20 * airMult * (this.playerSpeedMult || 1.0);
         this.matter.body.setVelocity(this.playerBody, { x: nx * dashSpd, y: this.playerBody.velocity.y });
         SoundFX.swipe(this.playerData);
+        this.addSpecialAction();
         this.playerAttackTime = Date.now();
       } else {
         // 通常攻撃（空中は力を抑制）
@@ -1913,6 +2249,7 @@ class BattleScene extends Phaser.Scene {
         const force = Math.min(len/75, 0.32) * (0.5 + this.playerData.saku * 0.12) * airMult;
         this.matter.body.applyForce(this.playerBody, this.playerBody.position, { x: nx*force, y: ny*force });
         SoundFX.swipe(this.playerData);
+        this.addSpecialAction();
         this.playerAttackTime = Date.now();
       }
 
@@ -2093,8 +2430,8 @@ class BattleScene extends Phaser.Scene {
         const pReduce = 1 - this.playerData.mochi * 0.07;
         const eReduce = 1 - this.enemyData.mochi  * 0.07;
 
-        this.playerHP = Math.max(0, this.playerHP - dmg * 0.5 * pReduce * eDmgMult);
-        this.enemyHP  = Math.max(0, this.enemyHP  - dmg * 0.5 * eReduce * pDmgMult);
+        this.playerHP = Math.max(0, this.playerHP - dmg * 0.5 * pReduce * eDmgMult * (this.playerDefMult || 1.0));
+        this.enemyHP  = Math.max(0, this.enemyHP  - dmg * 0.5 * eReduce * pDmgMult * (this.playerDmgBonus || 1.0));
         this.updateHPBars();
 
         // おもさ = 吹き飛ばすちから（攻撃側の重さがノックバックを強化）
