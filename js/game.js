@@ -156,6 +156,35 @@ const SoundFX = {
       ns.start(now);
     } catch(e) {}
   },
+  airSlash() {
+    try {
+      const ctx = this.ctx(), now = ctx.currentTime;
+      // ズバッ：鋭い打撃感＋低音インパクト
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sawtooth'; osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(72, now + 0.13);
+      gain.gain.setValueAtTime(0.0, now);
+      gain.gain.linearRampToValueAtTime(0.75, now + 0.007);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      osc.start(now); osc.stop(now + 0.17);
+      // 衝撃ノイズ
+      const bsz = Math.floor(ctx.sampleRate * 0.07);
+      const buf = ctx.createBuffer(1, bsz, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < bsz; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bsz, 1.5);
+      const ns = ctx.createBufferSource(), ng = ctx.createGain();
+      ns.buffer = buf; ns.connect(ng); ng.connect(ctx.destination);
+      ng.gain.setValueAtTime(0.50, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+      ns.start(now);
+      // 低音バスヒット
+      const ob = ctx.createOscillator(), gb = ctx.createGain();
+      ob.type = 'triangle'; ob.connect(gb); gb.connect(ctx.destination);
+      ob.frequency.setValueAtTime(180, now); ob.frequency.exponentialRampToValueAtTime(44, now + 0.18);
+      gb.gain.setValueAtTime(0.55, now); gb.gain.exponentialRampToValueAtTime(0.001, now + 0.20);
+      ob.start(now); ob.stop(now + 0.22);
+    } catch(e) {}
+  },
   clash() {
     try {
       const ctx = this.ctx(), now = ctx.currentTime;
@@ -1650,6 +1679,7 @@ class BattleScene extends Phaser.Scene {
     this.buffAura           = null;
     this._aiStopped         = false;
     this._aiPending         = false;
+    this.playerAirAttack    = false;
 
     // カットイン等でチェーンが止まった場合に300ms以内で自動再起動
     this.time.addEvent({
@@ -2255,11 +2285,19 @@ class BattleScene extends Phaser.Scene {
         this.performJump(this.playerBody, nx, this.playerData);
         this.updateHPBars();
       } else if (isHorzSwipe) {
-        // ダッシュ攻撃（空中は移動量を抑制）
-        const airMult = this.playerGrounded ? 1.0 : 0.4;
-        const dashSpd = Math.min(len / 42, 0.65) * (0.5 + this.playerData.saku * 0.18) * 20 * airMult * (this.playerSpeedMult || 1.0);
-        this.matter.body.setVelocity(this.playerBody, { x: nx * dashSpd, y: this.playerBody.velocity.y });
-        SoundFX.swipe(this.playerData);
+        if (!this.playerGrounded) {
+          // ── 空中スワイプ攻撃：ダメージ・吹っ飛ばし2倍（collision側で適用）・スクワッシュ緑エフェクト・打撃音 ──
+          const dashSpd = Math.min(len / 42, 0.65) * (0.5 + this.playerData.saku * 0.18) * 20 * 0.5 * (this.playerSpeedMult || 1.0);
+          this.matter.body.setVelocity(this.playerBody, { x: nx * dashSpd, y: this.playerBody.velocity.y });
+          this.playerAirAttack = true;
+          this.time.delayedCall(500, () => { this.playerAirAttack = false; });
+          SoundFX.airSlash();
+        } else {
+          // ── 地上スワイプ攻撃（通常） ──
+          const dashSpd = Math.min(len / 42, 0.65) * (0.5 + this.playerData.saku * 0.18) * 20 * (this.playerSpeedMult || 1.0);
+          this.matter.body.setVelocity(this.playerBody, { x: nx * dashSpd, y: this.playerBody.velocity.y });
+          SoundFX.swipe(this.playerData);
+        }
         this.addSpecialAction();
         this.playerAttackTime = Date.now();
       } else {
@@ -2276,12 +2314,32 @@ class BattleScene extends Phaser.Scene {
       const sq = Math.min(0.18, len * 0.0012);
       const pbs = this.playerBaseScale;
       this.tweens.killTweensOf(this.playerG);
-      if (Math.abs(dx) >= Math.abs(dy)) {
+      const isHorzSq = Math.abs(dx) >= Math.abs(dy);
+      if (isHorzSq) {
         this.playerG.setScale(pbs*(1+sq), pbs*(1-sq*0.45));
       } else {
         this.playerG.setScale(pbs*(1-sq*0.45), pbs*(1+sq));
       }
       this.tweens.add({ targets: this.playerG, scaleX: pbs, scaleY: pbs, duration: 700, ease: 'Cubic.easeOut' });
+
+      // 空中スワイプ時：パン外側から広がる緑インパクトライン（パン自体は変色しない）
+      if (this.playerAirAttack) {
+        const _px = this.playerBody ? this.playerBody.position.x : GAME_W * 0.25;
+        const _py = this.playerBody ? this.playerBody.position.y : this.STAGE_Y - 50;
+        const lineG = this.add.graphics().setDepth(19).setPosition(_px, _py);
+        lineG.lineStyle(3, 0x44FF88, 1.0);
+        const numLines = 8;
+        const innerR = 52; // パンより外側から始める
+        const outerR = 88;
+        for (let i = 0; i < numLines; i++) {
+          const angle = (i / numLines) * Math.PI * 2;
+          lineG.lineBetween(
+            Math.cos(angle) * innerR, Math.sin(angle) * innerR,
+            Math.cos(angle) * outerR, Math.sin(angle) * outerR
+          );
+        }
+        this.tweens.add({ targets: lineG, alpha: 0, scaleX: 1.35, scaleY: 1.35, duration: 260, ease: 'Power2.easeOut', onComplete: () => lineG.destroy() });
+      }
     });
   }
 
@@ -2452,8 +2510,12 @@ class BattleScene extends Phaser.Scene {
         const pReduce = 1 - this.playerData.mochi * 0.07;
         const eReduce = 1 - this.enemyData.mochi  * 0.07;
 
+        // 空中スワイプ攻撃ボーナス（プレイヤーがジャンプ中スワイプ → ダメ×2・吹っ飛ばし×2）
+        const airBonus = (playerIsAttacker && this.playerAirAttack) ? 2.0 : 1.0;
+        if (playerIsAttacker && this.playerAirAttack) this.playerAirAttack = false;
+
         this.playerHP = Math.max(0, this.playerHP - dmg * 0.5 * pReduce * eDmgMult * (this.playerDefMult || 1.0));
-        this.enemyHP  = Math.max(0, this.enemyHP  - dmg * 0.5 * eReduce * pDmgMult * (this.playerDmgBonus || 1.0));
+        this.enemyHP  = Math.max(0, this.enemyHP  - dmg * 0.5 * eReduce * pDmgMult * (this.playerDmgBonus || 1.0) * airBonus);
         this.updateHPBars();
 
         // おもさ = 吹き飛ばすちから（攻撃側の重さがノックバックを強化）
@@ -2464,7 +2526,7 @@ class BattleScene extends Phaser.Scene {
         const pWeightBoost = 0.6 + this.enemyData.weight * 0.10;
         const eWeightBoost = 0.6 + this.playerData.weight * 0.10;
         const pKB = (1 + (1 - this.playerHP/this.playerMaxHP) * 1.8) * speed * 0.026 * pWeightBoost;
-        const eKB = (1 + (1 - this.enemyHP/this.enemyMaxHP)  * 1.8) * speed * 0.026 * eWeightBoost;
+        const eKB = (1 + (1 - this.enemyHP/this.enemyMaxHP)  * 1.8) * speed * 0.026 * eWeightBoost * airBonus;
         this.matter.body.applyForce(playerB, playerB.position, { x:  knx*pKB, y: (kny-0.4)*pKB });
         this.matter.body.applyForce(enemyB,  enemyB.position,  { x: -knx*eKB, y: (kny-0.4)*eKB });
 
@@ -2537,6 +2599,8 @@ class BattleScene extends Phaser.Scene {
       // 物理を止めて床に固定
       this.matter.body.setStatic(loserBody, true);
       this.matter.body.setVelocity(loserBody, { x: 0, y: 0 });
+      // 衝突スクワッシュtweenが残っていると元に戻るので必ずキャンセル
+      this.tweens.killTweensOf(loserG);
       const sx0   = loserG.scaleX;
       const sy0   = loserG.scaleY;
       const floorY = this.STAGE_Y;
