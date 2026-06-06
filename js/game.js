@@ -665,6 +665,14 @@ class TitleScene extends Phaser.Scene {
   constructor() { super({ key: 'TitleScene' }); }
 
   preload() {
+    // ローディング進捗をHTMLのプログレスバーに反映
+    this.load.on('progress', v => {
+      if (window.__onPhaserProgress) window.__onPhaserProgress(v);
+    });
+    this.load.on('complete', () => {
+      if (window.__onPhaserLoadComplete) window.__onPhaserLoadComplete();
+    });
+
     BREAD_LIST.forEach(b => {
       if (b.stage === 1) {
         this.load.image(`card_${b.id}`, `breadpicture_card_final/${b.id}.png`);

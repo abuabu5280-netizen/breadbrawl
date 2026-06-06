@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>BreadBrawl</title>
+  <!-- Phaserを優先的に先読み -->
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js" as="script" crossorigin>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,9 +15,74 @@
       background: #2c1810;
       overflow: hidden;
     }
+    /* ローディング画面 */
+    #loading {
+      position: fixed;
+      inset: 0;
+      background: #2c1810;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      z-index: 9999;
+      transition: opacity 0.4s;
+    }
+    #loading h1 {
+      font-family: 'Arial Rounded MT Bold', Arial, sans-serif;
+      font-size: 36px;
+      color: #F5C842;
+      text-shadow: 2px 2px 0 #7A4800;
+      letter-spacing: 2px;
+    }
+    #loading p {
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      color: #C89050;
+    }
+    #loading-bar-wrap {
+      width: 200px;
+      height: 10px;
+      background: #5a3020;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    #loading-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #F5C842, #FF8800);
+      border-radius: 5px;
+      transition: width 0.2s;
+    }
   </style>
 </head>
 <body>
-  <script src="js/game.js?v=20260524"></script>
+  <!-- Phaser・画像読み込み中に表示されるローディング画面 -->
+  <div id="loading">
+    <h1>🍞 BreadBrawl</h1>
+    <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+    <p id="loading-msg">読み込み中...</p>
+  </div>
+
+  <script>
+    // Service Worker 登録（2回目以降の起動を高速化）
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
+    // Phaserのローダーイベントにフックしてプログレスバーを更新
+    window.__onPhaserProgress = function(value) {
+      const bar = document.getElementById('loading-bar');
+      if (bar) bar.style.width = Math.round(value * 100) + '%';
+    };
+    window.__onPhaserLoadComplete = function() {
+      const el = document.getElementById('loading');
+      if (!el) return;
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 400);
+    };
+  </script>
+
+  <script src="js/game.js?v=20260606"></script>
 </body>
 </html>
