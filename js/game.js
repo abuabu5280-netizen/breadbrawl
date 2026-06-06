@@ -1416,7 +1416,7 @@ class BreadSelectScene extends Phaser.Scene {
 
   showStarInfoPopup(level) {
     this._starInfoOpen = true;
-    const dW = GAME_W - 50, dH = 320;
+    const dW = GAME_W - 50, dH = 390;
     const dX = 25, dY = Math.round((GAME_H - dH) / 2);
     const elems = [];
     const mk = (obj, depth) => { obj.setScrollFactor(0).setDepth(depth); elems.push(obj); return obj; };
@@ -1640,6 +1640,17 @@ class BattleScene extends Phaser.Scene {
     this.playerSpeedMult    = 1.0;
     this.arabianTimer       = null;
     this.buffAura           = null;
+    this._aiStopped         = false;
+    this._aiPending         = false;
+
+    // カットイン等でチェーンが止まった場合に300ms以内で自動再起動
+    this.time.addEvent({
+      delay: 300,
+      loop: true,
+      callback: () => {
+        if (!this.gameOver && !this._aiStopped) this._scheduleAI();
+      }
+    });
 
     // 横視点用の重力を有効化
     this.matter.world.setGravity(0, 2.2);
@@ -2083,10 +2094,10 @@ class BattleScene extends Phaser.Scene {
         const dmg = this.enemyMaxHP * 0.20;
         this.enemyHP = Math.max(0, this.enemyHP - dmg);
         this.updateHPBars();
-        // 斬撃エフェクト
+        // 斬撃エフェクト（ステージ中央の戦闘エリアに表示）
         for (let i = 0; i < 3; i++) {
           const slash = this.add.graphics().setDepth(20);
-          const sy = GAME_H * 0.35 + i * 60;
+          const sy = this.STAGE_Y - 160 + i * 55;
           slash.lineStyle(3 + i, 0xFF4422, 0.9);
           slash.lineBetween(-30, sy - 20, GAME_W + 30, sy + 20);
           slash.lineStyle(1, 0xFFAA88, 0.6);
@@ -2267,7 +2278,9 @@ class BattleScene extends Phaser.Scene {
   }
 
   _scheduleAI() {
-    if (this.gameOver) return;
+    if (this.gameOver || this._aiStopped) return;
+    if (this._aiPending) return;
+    this._aiPending = true;
     const isS2 = this.enemyData && this.enemyData.stage === 2;
     // S2: 高攻撃時 50~150ms / 低攻撃時 80~200ms（約6〜8回/秒）
     // S1: 高攻撃時 80~230ms / 低攻撃時 130~330ms（約4〜5回/秒）
@@ -2277,6 +2290,7 @@ class BattleScene extends Phaser.Scene {
     const randRange = isS2 ? 180 : 150;
     const delay = baseDelay + Math.random() * randRange;
     this.time.delayedCall(delay, () => {
+      this._aiPending = false;
       this._doAIAction();
       this._scheduleAI();
     });
@@ -2501,15 +2515,85 @@ class BattleScene extends Phaser.Scene {
   endGame() {
     if (this.gameOver) return;
     this.gameOver = true;
+    this._aiStopped = true;
     const playerWon = this.playerHP >= this.enemyHP;
     const isNewCard = playerWon && !SaveManager.isCollected(this.enemyData.id);
     if (playerWon) { SaveManager.addCard(this.enemyData.id); SaveManager.addXP(1); SoundFX.victory(); }
     else { SoundFX.defeat(); }
     const resultData = { playerWon, playerData: this.playerData, enemyData: this.enemyData, isNewCard };
-    this.time.delayedCall(700, () => {
+
+    // ── 敗者パンのつぶれアニメーション ──
+    const loserG    = playerWon ? this.enemyG    : this.playerG;
+    const loserBody = playerWon ? this.enemyBody : this.playerBody;
+    if (loserG && loserBody) {
+      // 物理を止めて床に固定
+      this.matter.body.setStatic(loserBody, true);
+      this.matter.body.setVelocity(loserBody, { x: 0, y: 0 });
+      const sx0   = loserG.scaleX;
+      const sy0   = loserG.scaleY;
+      const floorY = this.STAGE_Y;
+
+      // ① 小さく浮き上がる（ため動作）
+      this.tweens.add({
+        targets: loserG,
+        y: loserG.y - 18,
+        scaleX: sx0 * 0.88,
+        scaleY: sy0 * 1.18,
+        duration: 130,
+        ease: 'Power2.easeOut',
+        onComplete: () => {
+
+          // ② 床に叩きつけられてぺしゃんこ
+          this.tweens.add({
+            targets: loserG,
+            y: floorY,
+            scaleX: sx0 * 1.7,
+            scaleY: sy0 * 0.15,
+            duration: 180,
+            ease: 'Power4.easeIn',
+            onComplete: () => {
+
+              // ③ グレーに変色
+              loserG.setTint(0x999999);
+
+              // ④ パン屑が飛び散る
+              const cx = loserG.x;
+              const numCrumbs = 10;
+              for (let i = 0; i < numCrumbs; i++) {
+                const angle  = (Math.PI * i / (numCrumbs - 1)) - Math.PI; // 左右に広がる
+                const speed  = 60 + Math.random() * 70;
+                const vx     = Math.cos(angle) * speed;
+                const vy     = -(40 + Math.random() * 60);
+                const r      = 3 + Math.random() * 4;
+                const color  = Phaser.Math.RND.pick([0xD4A96A, 0xC89050, 0xE8C080, 0xB07040]);
+                const crumb  = this.add.graphics().setDepth(18);
+                crumb.fillStyle(color, 1);
+                crumb.fillCircle(cx, floorY - 4, r);
+                this.tweens.add({
+                  targets: crumb,
+                  x: vx * 0.5,
+                  y: vy * 0.4,
+                  alpha: 0,
+                  scaleX: 0.2, scaleY: 0.2,
+                  duration: 500 + Math.random() * 300,
+                  ease: 'Power2.easeOut',
+                  onComplete: () => crumb.destroy()
+                });
+              }
+
+              // ⑤ 衝撃の振動エフェクト
+              this.cameras.main.shake(180, 0.008);
+            }
+          });
+        }
+      });
+    }
+
+    // つぶれ完了後にフェードアウト → リザルトへ
+    this.time.delayedCall(900, () => {
       this.cameras.main.fadeOut(450, 0, 0, 0);
     });
-    this.time.delayedCall(1200, () => {
+    this.time.delayedCall(1450, () => {
       this.scene.start('ResultScene', resultData);
     });
   }
