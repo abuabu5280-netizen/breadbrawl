@@ -3,6 +3,9 @@
 // ========================================
 const GAME_W  = 390;
 const GAME_H  = 844;
+
+// iOS / 低スペック端末検出（パーティクル削減・物理演算軽量化に使用）
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 const FIELD_CX = GAME_W / 2;
 const FIELD_CY = GAME_H / 2;
 const FIELD_RX = 148;
@@ -915,7 +918,7 @@ class TitleScene extends Phaser.Scene {
   }
 
   createFlourParticles() {
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < (IS_IOS ? 6 : 16); i++) {
       const p = this.add.circle(Phaser.Math.Between(0, GAME_W), Phaser.Math.Between(0, GAME_H),
         Phaser.Math.Between(2, 5), 0xFFF8E7, Phaser.Math.FloatBetween(0.15, 0.5));
       this.tweens.add({
@@ -1636,8 +1639,9 @@ class BattleScene extends Phaser.Scene {
     this.dragStart       = null;
     this.timeLeft        = 30;
     this.playerGrounded  = true;
-    this.playerAttackTime = 0;
-    this.enemyAttackTime  = 0;
+    this.playerAttackTime    = 0;
+    this.enemyAttackTime     = 0;
+    this.playerAirAttackTime = 0;
     this.enemyGrounded   = true;
     this.playerJumpsLeft = 2;
     this.enemyJumpsLeft  = 2;
@@ -1896,7 +1900,7 @@ class BattleScene extends Phaser.Scene {
   }
 
   spawnVSSparks(cx, cy) {
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < (IS_IOS ? 8 : 18); i++) {
       const angle = Math.random() * Math.PI * 2;
       const dist  = Phaser.Math.Between(12, 72);
       const spark = this.add.circle(cx, cy, Phaser.Math.Between(2, 6),
@@ -2255,33 +2259,37 @@ class BattleScene extends Phaser.Scene {
         this.performJump(this.playerBody, nx, this.playerData);
         this.updateHPBars();
       } else if (isHorzSwipe) {
-        // ダッシュ攻撃（空中は移動量を抑制）
-        const airMult = this.playerGrounded ? 1.0 : 0.4;
+        // ダッシュ攻撃（空中は移動量を抑制、衝突ダメージは1.5倍ボーナスで補う）
+        const airMult = this.playerGrounded ? 1.0 : 0.7;
         const dashSpd = Math.min(len / 42, 0.65) * (0.5 + this.playerData.saku * 0.18) * 20 * airMult * (this.playerSpeedMult || 1.0);
         this.matter.body.setVelocity(this.playerBody, { x: nx * dashSpd, y: this.playerBody.velocity.y });
         SoundFX.swipe(this.playerData);
+        if (!this.playerGrounded) { this.showAerialAttackEffect(this.playerBody); this.playerAirAttackTime = Date.now(); }
         this.addSpecialAction();
         this.playerAttackTime = Date.now();
       } else {
-        // 通常攻撃（空中は力を抑制）
-        const airMult = this.playerGrounded ? 1.0 : 0.5;
+        // 通常攻撃（空中は移動量を地上と同等に抑制、衝突ダメージは1.5倍ボーナスで補う）
+        const airMult = this.playerGrounded ? 1.0 : 1.0;
         const force = Math.min(len/75, 0.32) * (0.5 + this.playerData.saku * 0.12) * airMult;
         this.matter.body.applyForce(this.playerBody, this.playerBody.position, { x: nx*force, y: ny*force });
         SoundFX.swipe(this.playerData);
+        if (!this.playerGrounded) { this.showAerialAttackEffect(this.playerBody); this.playerAirAttackTime = Date.now(); }
         this.addSpecialAction();
         this.playerAttackTime = Date.now();
       }
 
-      // もちもちスクワッシュ
-      const sq = Math.min(0.18, len * 0.0012);
-      const pbs = this.playerBaseScale;
-      this.tweens.killTweensOf(this.playerG);
-      if (Math.abs(dx) >= Math.abs(dy)) {
-        this.playerG.setScale(pbs*(1+sq), pbs*(1-sq*0.45));
-      } else {
-        this.playerG.setScale(pbs*(1-sq*0.45), pbs*(1+sq));
+      // もちもちスクワッシュ（空中攻撃時はスピンモーションを優先）
+      if (this.playerGrounded || isUpSwipe) {
+        const sq = Math.min(0.18, len * 0.0012);
+        const pbs = this.playerBaseScale;
+        this.tweens.killTweensOf(this.playerG);
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          this.playerG.setScale(pbs*(1+sq), pbs*(1-sq*0.45));
+        } else {
+          this.playerG.setScale(pbs*(1-sq*0.45), pbs*(1+sq));
+        }
+        this.tweens.add({ targets: this.playerG, scaleX: pbs, scaleY: pbs, duration: 700, ease: 'Cubic.easeOut' });
       }
-      this.tweens.add({ targets: this.playerG, scaleX: pbs, scaleY: pbs, duration: 700, ease: 'Cubic.easeOut' });
     });
   }
 
@@ -2448,12 +2456,15 @@ class BattleScene extends Phaser.Scene {
         const pDmgMult  = playerIsAttacker ? 1.2 : (enemyIsAttacker  ? 0.8 : 1.0); // プレイヤーの与ダメ係数
         const eDmgMult  = enemyIsAttacker  ? 1.2 : (playerIsAttacker ? 0.8 : 1.0); // 敵の与ダメ係数
 
+        // 空中攻撃ボーナス（500ms以内の空中攻撃は与ダメ1.5倍）
+        const airBonus = (now - this.playerAirAttackTime) < 500 ? 1.5 : 1.0;
+
         // もちもち = HPのへりにくさ（ダメージ軽減）
         const pReduce = 1 - this.playerData.mochi * 0.07;
         const eReduce = 1 - this.enemyData.mochi  * 0.07;
 
         this.playerHP = Math.max(0, this.playerHP - dmg * 0.5 * pReduce * eDmgMult * (this.playerDefMult || 1.0));
-        this.enemyHP  = Math.max(0, this.enemyHP  - dmg * 0.5 * eReduce * pDmgMult * (this.playerDmgBonus || 1.0));
+        this.enemyHP  = Math.max(0, this.enemyHP  - dmg * 0.5 * eReduce * pDmgMult * airBonus * (this.playerDmgBonus || 1.0));
         this.updateHPBars();
 
         // おもさ = 吹き飛ばすちから（攻撃側の重さがノックバックを強化）
@@ -2488,7 +2499,7 @@ class BattleScene extends Phaser.Scene {
   }
 
   spawnCrumbs(x, y) {
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < (IS_IOS ? 3 : 7); i++) {
       const c = this.add.circle(x, y, Phaser.Math.Between(2,6), Phaser.Math.RND.pick([0xD4813A,0xF5ECD7,0x8B4513,0xFFD090]));
       this.tweens.add({ targets: c, x: x+Phaser.Math.Between(-55,55), y: y+Phaser.Math.Between(-55,55), alpha: 0, scaleX: 0.2, scaleY: 0.2, duration: Phaser.Math.Between(400,750), onComplete: () => c.destroy() });
     }
@@ -2566,21 +2577,19 @@ class BattleScene extends Phaser.Scene {
 
               // ④ パン屑が飛び散る
               const cx = loserG.x;
-              const numCrumbs = 10;
+              const numCrumbs = IS_IOS ? 5 : 10;
               for (let i = 0; i < numCrumbs; i++) {
-                const angle  = (Math.PI * i / (numCrumbs - 1)) - Math.PI; // 左右に広がる
+                const angle  = (Math.PI * i / (numCrumbs - 1)) - Math.PI;
                 const speed  = 60 + Math.random() * 70;
                 const vx     = Math.cos(angle) * speed;
                 const vy     = -(40 + Math.random() * 60);
                 const r      = 3 + Math.random() * 4;
                 const color  = Phaser.Math.RND.pick([0xD4A96A, 0xC89050, 0xE8C080, 0xB07040]);
-                const crumb  = this.add.graphics().setDepth(18);
-                crumb.fillStyle(color, 1);
-                crumb.fillCircle(cx, floorY - 4, r);
+                const crumb  = this.add.circle(cx, floorY - 4, r, color).setDepth(18);
                 this.tweens.add({
                   targets: crumb,
-                  x: vx * 0.5,
-                  y: vy * 0.4,
+                  x: cx + vx * 0.5,
+                  y: floorY - 4 + vy * 0.4,
                   alpha: 0,
                   scaleX: 0.2, scaleY: 0.2,
                   duration: 500 + Math.random() * 300,
@@ -2603,6 +2612,39 @@ class BattleScene extends Phaser.Scene {
     });
     this.time.delayedCall(1450, () => {
       this.scene.start('ResultScene', resultData);
+    });
+  }
+
+  showAerialAttackEffect(body) {
+    const x = body.position.x;
+    const y = body.position.y;
+
+    // バーストリング（金色）
+    const ring = this.add.graphics();
+    ring.lineStyle(3, 0xFFCC44, 1);
+    ring.strokeCircle(0, 0, 16);
+    ring.setPosition(x, y);
+    this.tweens.add({
+      targets: ring,
+      scaleX: 4, scaleY: 4,
+      alpha: 0,
+      duration: 260,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy()
+    });
+
+    // 内側の白フラッシュリング
+    const inner = this.add.graphics();
+    inner.lineStyle(2, 0xFFFFFF, 0.85);
+    inner.strokeCircle(0, 0, 10);
+    inner.setPosition(x, y);
+    this.tweens.add({
+      targets: inner,
+      scaleX: 2.5, scaleY: 2.5,
+      alpha: 0,
+      duration: 180,
+      ease: 'Cubic.easeOut',
+      onComplete: () => inner.destroy()
     });
   }
 
@@ -2813,13 +2855,22 @@ const config = {
   type: Phaser.AUTO,
   width: GAME_W, height: GAME_H,
   backgroundColor: '#0A0604',
+  antialias: !IS_IOS,
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: GAME_W,
     height: GAME_H,
   },
-  physics: { default: 'matter', matter: { gravity: { y: 0 }, debug: false } },
+  physics: {
+    default: 'matter',
+    matter: {
+      gravity: { y: 0 },
+      debug: false,
+      positionIterations: IS_IOS ? 3 : 6,
+      velocityIterations: IS_IOS ? 2 : 4,
+    }
+  },
   scene: [TitleScene, BreadSelectScene, BattleScene, CollectionScene, ResultScene]
 };
 
